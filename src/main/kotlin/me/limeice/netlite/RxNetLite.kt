@@ -104,8 +104,9 @@ open class RxNetLite() {
                 } finally {
                     input.closeSilent()
                 }
+                e.onComplete()
             }
-            e.onComplete()
+            throw RuntimeException("Network Connection Error!Error code: $code")
         }
     }
 
