@@ -11,9 +11,8 @@ class DataCache() {
             field = value
             if (value == null)
                 return
-            if (!value.exists())
-                if (!value.mkdirs())
-                    throw RuntimeException("Unable to create directory.File path:${value.absolutePath}")
+            if (!value.exists() && !value.mkdirs())
+                throw RuntimeException("Unable to create directory.File path:${value.absolutePath}")
         }
 
     /* Get操作缓存 */
