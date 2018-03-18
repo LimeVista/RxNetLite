@@ -1,10 +1,8 @@
 package me.limeice.netlite.internal;
 
-import java.util.concurrent.atomic.AtomicBoolean;
-
 public class WrapEmitter {
 
-    public final Object lock = new Object();
+    private final Object lock = new Object();
 
     public String url;
 
@@ -13,5 +11,17 @@ public class WrapEmitter {
 
     public WrapEmitter(String url) {
         this.url = url;
+    }
+
+    public void lock() throws InterruptedException {
+        synchronized (lock) {
+            lock.wait();
+        }
+    }
+
+    public void notifyAllCall() {
+        synchronized (lock) {
+            lock.notifyAll();
+        }
     }
 }

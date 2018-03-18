@@ -2,11 +2,8 @@
 
 package me.limeice.netlite.internal
 
-import com.sun.org.apache.xerces.internal.xinclude.XIncludeHandler.BUFFER_SIZE
 import io.reactivex.annotations.NonNull
-import me.limeice.netlite.RxNetLite
 import java.io.*
-import java.io.File
 
 
 private const val CACHE_BUFFER = 1024 * 16 // 16K
@@ -71,7 +68,6 @@ fun read(inStream: InputStream, outStream: OutputStream): Long {
 /**
  * 移动文件
  *
- * @param input  输入文件
  * @param output 输出文件
  * @return 是否移动成功{@code true}成功否则失败
  */

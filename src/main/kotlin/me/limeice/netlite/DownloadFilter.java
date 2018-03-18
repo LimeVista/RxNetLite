@@ -11,12 +11,13 @@ public class DownloadFilter {
     /* 覆盖上个重复任务文件 */
     public static final int OVERLAY = 0;
 
-    /* 阻塞当前任务，当之前任务完成时和之前任务一样，执行后续操作 */
+    /* 如果该任务已经存在，阻塞当前任务，当之前任务完成时和之前任务一样，执行后续操作 */
     public static final int WAIT_AFTER = 1;
 
     /* 取消当前任务 */
     public static final int CANCEL = 2;
 
+    @SuppressWarnings("WeakerAccess")
     protected List<WrapEmitter> tasks = Collections.synchronizedList(new ArrayList<WrapEmitter>());
 
     /* 过滤器 */
@@ -39,7 +40,7 @@ public class DownloadFilter {
             emitter.error = false;
             tasks.remove(emitter);
             if (filter == WAIT_AFTER)
-                emitter.lock.notifyAll();
+                emitter.notifyAllCall();
             return;
         }
     }
@@ -53,7 +54,7 @@ public class DownloadFilter {
             emitter.error = true;
             tasks.remove(emitter);
             if (filter == WAIT_AFTER)
-                emitter.lock.notifyAll();
+                emitter.notifyAllCall();
             return;
         }
     }

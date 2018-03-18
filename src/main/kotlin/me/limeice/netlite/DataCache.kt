@@ -52,6 +52,6 @@ class DataCache() {
     /* 清除缓存 */
     @Synchronized fun clearCache() {
         downloadCacheFolder?.delete()
-        downloadCacheFolder
+        downloadCacheFolder?.createNewFile()
     }
 }

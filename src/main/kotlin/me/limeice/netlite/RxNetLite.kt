@@ -14,6 +14,7 @@ import java.net.HttpURLConnection
 import java.net.URL
 import javax.net.ssl.HttpsURLConnection
 
+@Suppress("MemberVisibilityCanBePrivate")
 open class RxNetLite() {
 
     companion object {
@@ -55,6 +56,7 @@ open class RxNetLite() {
     var userAgent: String? = "Mozilla/5.0 (Linux; Android 7.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/64.0.3282.186 Mobile Safari/537.36"
 
 
+    @Suppress("unused")
     inner class Builder internal constructor() {
 
         /* 设置缓存 */
@@ -148,11 +150,12 @@ open class RxNetLite() {
                 .initGetConnection()
                 .startDownloadConnection(out)
                 .map { size ->
-                    if (cache)
+                    if (cache) {
                         if (outFile.exists()) outFile.delete() // 存在则删除
-                    if (!cacheFile.moveFile(outFile)) {
-                        cacheFile.delete()
-                        throw RuntimeException("File download Error!,file path: ${outFile.absolutePath}")
+                        if (!cacheFile.moveFile(outFile)) {
+                            cacheFile.delete()
+                            throw RuntimeException("File download Error!,file path: ${outFile.absolutePath}")
+                        }
                     }
                     size
                 }
@@ -167,7 +170,6 @@ open class RxNetLite() {
      *
      *  @return RxJava 控制器（带有0~1f的下载进度）
      */
-    @Suppress("PLATFORM_CLASS_MAPPED_TO_KOTLIN")
     fun download(url: String, outFile: File, filter: DownloadFilter?): Observable<Float> =
             download<HttpURLConnection>(url, outFile, filter, { /*None*/ })
 
@@ -180,7 +182,6 @@ open class RxNetLite() {
      *
      *  @return RxJava 控制器（带有0~1f的下载进度）
      */
-    @Suppress("PLATFORM_CLASS_MAPPED_TO_KOTLIN")
     fun downloadFixGetLength(url: String, outFile: File, filter: DownloadFilter?): Observable<Float> =
             download<HttpURLConnection>(
                     url, outFile, filter,
@@ -213,7 +214,7 @@ open class RxNetLite() {
                         DownloadFilter.CANCEL -> return@create
                         DownloadFilter.OVERLAY -> Unit
                         DownloadFilter.WAIT_AFTER -> {
-                            (emitter.lock as Object).wait()
+                            emitter.lock()
                             if (!emitter.error) e.onComplete()
                             return@create
                         }
@@ -345,6 +346,8 @@ open class RxNetLite() {
         }
     }
 
+    /* 暂时保留的方法 */
+    @Suppress("UNUSED_PARAMETER")
     private fun setHttps(connect: HttpsURLConnection) {
         // 暂时默认
     }
