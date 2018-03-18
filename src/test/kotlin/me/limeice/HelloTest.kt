@@ -20,9 +20,9 @@ class HelloTest {
         val filter = DownloadFilter()
 
         /* 如果该任务已经存在，阻塞当前任务，当之前任务完成时和之前任务一样，执行后续操作 */
-        filter.filter = DownloadFilter.WAIT_AFTER //
+        filter.filter = DownloadFilter.WAIT_AFTER
         var i = 0
-        while (i++ < 10) {
+        while (i++ < 18) {
             lite.download("http://c.hiphotos.baidu.com/image/pic/item/962bd40735fae6cd09ccfb7903b30f2442a70fa9.jpg",
                     File("$folder${File.separator}133.png"), filter)
                     .subscribeOn(Schedulers.io())           // IO线程执行
@@ -33,7 +33,7 @@ class HelloTest {
                                 println("下载异常")
                                 it.printStackTrace()
                             },
-                            { println("下载完成") }
+                            { println("下载完成队列：${Thread.currentThread().name}") }
                     )
         }
         Thread.sleep(10000)
