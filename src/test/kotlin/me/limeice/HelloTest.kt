@@ -25,8 +25,8 @@ class HelloTest {
         while (i++ < 10) {
             lite.download("http://c.hiphotos.baidu.com/image/pic/item/962bd40735fae6cd09ccfb7903b30f2442a70fa9.jpg",
                     File("$folder${File.separator}133.png"), filter)
-                    .subscribeOn(Schedulers.io())
-                    .observeOn(Schedulers.newThread())
+                    .subscribeOn(Schedulers.io())           // IO线程执行
+                    .observeOn(Schedulers.computation())    // 计算线程完成显示
                     .subscribe(
                             { println("下载${(it * 1000).toInt().toFloat() / 10}%") },
                             {
@@ -46,7 +46,7 @@ class HelloTest {
         // Get 操作
         lite.get("https://fanyi.baidu.com")
                 .subscribe { bytes ->
-                    println(String(bytes, Charset.forName("UTF-8")))
+                    println(String(bytes, Charset.forName("UTF-8"))) // 打印结果
                     size1 = bytes.size
                 }
         // Get 操作
