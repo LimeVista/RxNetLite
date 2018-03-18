@@ -223,7 +223,6 @@ open class RxNetLite() {
                     } else if (!outFile.exists()) {
                         outFile.createNewFile()
                     }
-
                     input = connect.inputStream
                     out = FileOutputStream(cacheFile)
                     val buffer = ByteArray(CACHE_SIZE)
@@ -249,8 +248,9 @@ open class RxNetLite() {
                         if (tag == TASK_FIRST) tag = TASK_NEED_CALL
                         e.onComplete() // 下载成功
                     }
+                } else {
+                    e.onError(RuntimeException("Network Connection Error!Error code: $code"))
                 }
-                throw RuntimeException("Network Connection Error!Error code: $code")
             } finally {
                 input.closeSilent()
                 out.closeSilent()
