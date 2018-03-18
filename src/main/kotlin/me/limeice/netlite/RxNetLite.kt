@@ -45,7 +45,7 @@ open class RxNetLite() {
     var userAgent: String? = "Mozilla/5.0 (Linux; Android 7.0) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/64.0.3282.186 Mobile Safari/537.36"
 
 
-    inner class Builder {
+    inner class Builder internal constructor() {
 
         /* 设置缓存 */
         fun setCaches(cache: DataCache) = apply { dataCache = cache }
@@ -212,10 +212,11 @@ open class RxNetLite() {
         connect.connectTimeout = connectTimeout
         connect.useCaches = dataCache.useGetCaches
         connect.doInput = true
-        connect.doOutput = true
+        // connect.doOutput = true
         connect.requestMethod = "GET"
         connect.instanceFollowRedirects = instanceFollowRedirects
         userAgent?.let { connect.setRequestProperty("User-Agent", userAgent) }
+        // connect.connect() // 不需要显式调用
     }
 
 
@@ -223,7 +224,6 @@ open class RxNetLite() {
     private fun <T : HttpURLConnection> whenHttps(connect: T) {
         if (connect is HttpsURLConnection)
             setHttps(connect)
-        connect.connect()
     }
 
     /* 连接到 [t] 获取数据,返回get操作数据 */
