@@ -1,6 +1,9 @@
 package me.limeice.netlite
 
 import io.reactivex.Observable
+import io.reactivex.Scheduler
+import io.reactivex.schedulers.Schedulers
+import me.limeice.netlite.internal.WrapEmitter
 import me.limeice.netlite.internal.closeSilent
 import me.limeice.netlite.internal.moveFile
 import me.limeice.netlite.internal.read
@@ -19,6 +22,15 @@ open class RxNetLite() {
         const val DEFAULT_TIMEOUT: Int = 30000
 
         internal const val CACHE_SIZE = 4096
+
+        /* 免删除回调任务 */
+        private const val TASK_NONE: Byte = 0
+
+        /* 需要删除回调任务 */
+        private const val TASK_NEED_CALL: Byte = 2
+
+        /* 第一个任务（任务集合中没有重复任务） */
+        private const val TASK_FIRST: Byte = 1
 
         @JvmStatic fun builder() = RxNetLite().Builder()
     }
@@ -110,7 +122,7 @@ open class RxNetLite() {
     }
 
     /**
-     *  下载数据
+     *  下载数据，功能有限版本
      *
      *  @param url      URL
      *  @param outFile 下载到指定位置
@@ -122,7 +134,14 @@ open class RxNetLite() {
         val out: FileOutputStream
         val cacheFile: File
         try {
-            cacheFile = if (cache) dataCache.executeDownloadCacheFile(url) else outFile
+            /* 设置缓存 */
+            cacheFile = if (cache) {
+                val f = dataCache.executeDownloadCacheFile(url)
+                dataCache.createCacheFile(f)
+                f
+            } else outFile
+
+            if (!cache && !outFile.exists()) outFile.createNewFile() // 如果文件不存在则创建
             out = FileOutputStream(cacheFile)
         } catch (e: Exception) {
             return Observable.fromCallable { throw e }
@@ -132,10 +151,11 @@ open class RxNetLite() {
                 .startDownloadConnection(out)
                 .map { size ->
                     if (cache)
-                        if (!cacheFile.moveFile(outFile)) {
-                            cacheFile.delete()
-                            throw RuntimeException("File download Error!,file path: ${outFile.absolutePath}")
-                        }
+                        if (outFile.exists()) outFile.delete() // 存在则删除
+                    if (!cacheFile.moveFile(outFile)) {
+                        cacheFile.delete()
+                        throw RuntimeException("File download Error!,file path: ${outFile.absolutePath}")
+                    }
                     size
                 }
     }
@@ -149,21 +169,61 @@ open class RxNetLite() {
      *
      *  @return RxJava 控制器（带有0~1f的下载进度）
      */
-    fun <T : HttpURLConnection> download(url: String, outFile: File, config: (T) -> Unit): Observable<Float> {
-        return Observable.create { e ->
-            @Suppress("UNCHECKED_CAST") val connect = URL(url).openConnection() as T
-            initGetConnection(connect)
-            config(connect)
-            val code = connect.responseCode
-            val contentLength = connect.contentLengthLong
-            if (code == 200) {
-                var input: InputStream? = null
-                var out: FileOutputStream? = null
-                val cache = dataCache.useDownloadCaches
+    @Suppress("PLATFORM_CLASS_MAPPED_TO_KOTLIN")
+    fun download(url: String, outFile: File, filter: DownloadFilter?): Observable<Float> =
+            download<HttpURLConnection>(url, outFile, filter, { /*None*/ })
 
-                val cacheFile = if (cache) dataCache.executeDownloadCacheFile(url) else outFile // 是否开启缓存
+    /**
+     *  下载数据
+     *
+     *  @param url       URL
+     *  @param outFile  下载到指定位置
+     *  @param config   下载前对其配置
+     *
+     *  @return RxJava 控制器（带有0~1f的下载进度）
+     */
+    @Suppress("PLATFORM_CLASS_MAPPED_TO_KOTLIN")
+    fun <T : HttpURLConnection> download(url: String, outFile: File, filter: DownloadFilter?, config: (T) -> Unit): Observable<Float> {
+        var observable: Observable<Float> = Observable.create { e ->
+            var tag: Byte = TASK_NONE // 标记任务
 
-                try {
+            /* 过滤器，任务调剂 */
+            if (filter != null) {
+                val emitter = filter.contains(url)
+                if (emitter == null) {
+                    tag = TASK_FIRST
+                    filter.add(WrapEmitter(url))
+                } else {
+                    when (filter.filter) {
+                        DownloadFilter.CANCEL -> return@create
+                        DownloadFilter.OVERLAY -> Unit
+                        DownloadFilter.WAIT_AFTER -> {
+                            (emitter.lock as java.lang.Object).wait()
+                            if (!emitter.error) e.onComplete()
+                            return@create
+                        }
+                    }
+                }
+            }
+            var input: InputStream? = null
+            var out: FileOutputStream? = null
+            val cache = dataCache.useDownloadCaches
+            val cacheFile = if (cache) dataCache.executeDownloadCacheFile(url) else outFile // 是否开启缓存
+
+            try {
+                @Suppress("UNCHECKED_CAST") val connect = URL(url).openConnection() as T
+                initGetConnection(connect)
+                config(connect)
+                val code = connect.responseCode
+                val contentLength = connect.contentLengthLong
+                if (code == 200) {
+                    /* 创建缓存文件设置文件 */
+                    if (cache) {
+                        dataCache.createCacheFile(cacheFile)
+                    } else if (!outFile.exists()) {
+                        outFile.createNewFile()
+                    }
+
                     input = connect.inputStream
                     out = FileOutputStream(cacheFile)
                     val buffer = ByteArray(CACHE_SIZE)
@@ -177,23 +237,32 @@ open class RxNetLite() {
                         e.onNext((count / contentLength.toDouble()).toFloat())
                     }
                     out.flush()
-                } finally {
-                    input.closeSilent()
-                    out.closeSilent()
-                }
-                if (cache) { // 使用缓存
-                    if (cacheFile.moveFile(outFile))
+                    if (cache) { // 使用缓存
+                        if (outFile.exists()) outFile.delete() // 当前存在则删除（覆盖）
+                        if (cacheFile.moveFile(outFile))
+                            e.onComplete() // 下载成功
+                        else {
+                            cacheFile.delete()
+                            throw RuntimeException("File download Error!,file path: ${outFile.absolutePath}")
+                        }
+                    } else {
+                        if (tag == TASK_FIRST) tag = TASK_NEED_CALL
                         e.onComplete() // 下载成功
-                    else {
-                        cacheFile.delete()
-                        throw RuntimeException("File download Error!,file path: ${outFile.absolutePath}")
                     }
-                } else {
-                    e.onComplete() // 下载成功
+                }
+                throw RuntimeException("Network Connection Error!Error code: $code")
+            } finally {
+                input.closeSilent()
+                out.closeSilent()
+                if (cache) cacheFile.delete() // 下载失败删除缓存
+                if (tag == TASK_NEED_CALL)
+                    filter?.clearSuccess(url) // 完成任务
+                else if (tag == TASK_FIRST) {
+                    filter?.clearBreak(url) // 中断任务
                 }
             }
-            throw RuntimeException("Network Connection Error!Error code: $code")
         }
+        return observable
     }
 
     /* 初始化Get连接 */
