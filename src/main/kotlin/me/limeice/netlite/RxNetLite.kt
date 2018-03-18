@@ -1,8 +1,6 @@
 package me.limeice.netlite
 
 import io.reactivex.Observable
-import io.reactivex.Scheduler
-import io.reactivex.schedulers.Schedulers
 import me.limeice.netlite.internal.WrapEmitter
 import me.limeice.netlite.internal.closeSilent
 import me.limeice.netlite.internal.moveFile
@@ -165,7 +163,7 @@ open class RxNetLite() {
      *
      *  @param url       URL
      *  @param outFile  下载到指定位置
-     *  @param config   下载前对其配置
+     *  @param filter   任务过滤器
      *
      *  @return RxJava 控制器（带有0~1f的下载进度）
      */
@@ -174,17 +172,34 @@ open class RxNetLite() {
             download<HttpURLConnection>(url, outFile, filter, { /*None*/ })
 
     /**
+     *  下载数据(当该网站下载数据长度为-1时可以调用本函数尝试)
+     *
+     *  @param url       URL
+     *  @param outFile  下载到指定位置
+     *  @param filter   任务过滤器
+     *
+     *  @return RxJava 控制器（带有0~1f的下载进度）
+     */
+    @Suppress("PLATFORM_CLASS_MAPPED_TO_KOTLIN")
+    fun downloadFixGetLength(url: String, outFile: File, filter: DownloadFilter?): Observable<Float> =
+            download<HttpURLConnection>(
+                    url, outFile, filter,
+                    { it.addRequestProperty("Accept-Encoding", "identity") }
+            )
+
+    /**
      *  下载数据
      *
      *  @param url       URL
      *  @param outFile  下载到指定位置
      *  @param config   下载前对其配置
+     *  @param filter   任务过滤器
      *
      *  @return RxJava 控制器（带有0~1f的下载进度）
      */
     @Suppress("PLATFORM_CLASS_MAPPED_TO_KOTLIN")
     fun <T : HttpURLConnection> download(url: String, outFile: File, filter: DownloadFilter?, config: (T) -> Unit): Observable<Float> {
-        var observable: Observable<Float> = Observable.create { e ->
+        return Observable.create { e ->
             var tag: Byte = TASK_NONE // 标记任务
 
             /* 过滤器，任务调剂 */
@@ -198,7 +213,7 @@ open class RxNetLite() {
                         DownloadFilter.CANCEL -> return@create
                         DownloadFilter.OVERLAY -> Unit
                         DownloadFilter.WAIT_AFTER -> {
-                            (emitter.lock as java.lang.Object).wait()
+                            (emitter.lock as Object).wait()
                             if (!emitter.error) e.onComplete()
                             return@create
                         }
@@ -214,8 +229,9 @@ open class RxNetLite() {
                 @Suppress("UNCHECKED_CAST") val connect = URL(url).openConnection() as T
                 initGetConnection(connect)
                 config(connect)
-                val code = connect.responseCode
+                connect.connect()
                 val contentLength = connect.contentLengthLong
+                val code = connect.responseCode
                 if (code == 200) {
                     /* 创建缓存文件设置文件 */
                     if (cache) {
@@ -262,7 +278,6 @@ open class RxNetLite() {
                 }
             }
         }
-        return observable
     }
 
     /* 初始化Get连接 */
