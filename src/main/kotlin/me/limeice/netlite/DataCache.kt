@@ -37,8 +37,10 @@ class DataCache() {
 
     /* 通过[name]生成临时缓存文件夹 */
     fun executeDownloadCacheFile(url: String): File {
-        val tag = if (url.length < 12) url else url.substring(0, 5) + url.substring(url.length - 5, url.length)
-        val file = File(downloadCacheFolder!!, "${url.hashCode()}_tag.temp")
+        val tag = if (url.length < 10) url else url.substring(url.length - 8, url.length)
+        val file = File(downloadCacheFolder!!, "${url.hashCode()}_$tag.tmp")
+        if (file.exists())
+            file.delete()
         file.createNewFile()
         if (onExitClearDownloadFile) file.deleteOnExit() // 退出前焚毁未下载完成文件
         return file

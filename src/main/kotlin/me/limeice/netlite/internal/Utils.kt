@@ -1,9 +1,15 @@
+@file:JvmName("RxUtils")
+
 package me.limeice.netlite.internal
 
 import com.sun.org.apache.xerces.internal.xinclude.XIncludeHandler.BUFFER_SIZE
 import io.reactivex.annotations.NonNull
+import me.limeice.netlite.RxNetLite
 import java.io.*
+import java.io.File
 
+
+private const val CACHE_BUFFER = 1024 * 16 // 16K
 
 fun Closeable?.closeSilent() {
     if (this == null) return
@@ -27,7 +33,7 @@ fun read(@NonNull inStream: InputStream): ByteArray {
     // 字节缓冲流
     val outStream = ByteArrayOutputStream()
     try {
-        val buffer = ByteArray(1024)
+        val buffer = ByteArray(CACHE_BUFFER)
         // 循环读取
         while (true) {
             val len = inStream.read(buffer)
@@ -49,7 +55,7 @@ fun read(@NonNull inStream: InputStream): ByteArray {
  */
 @Throws(IOException::class)
 fun read(inStream: InputStream, outStream: OutputStream): Long {
-    val buffer = ByteArray(1024)
+    val buffer = ByteArray(CACHE_BUFFER)
     var count = 0L
     // 循环读取
     while (true) {
@@ -60,4 +66,15 @@ fun read(inStream: InputStream, outStream: OutputStream): Long {
     }
     outStream.flush()
     return count
+}
+
+/**
+ * 移动文件
+ *
+ * @param input  输入文件
+ * @param output 输出文件
+ * @return 是否移动成功{@code true}成功否则失败
+ */
+fun File.moveFile(output: File?): Boolean {
+    return output != null && exists() && renameTo(output)
 }
