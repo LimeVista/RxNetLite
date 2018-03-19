@@ -1,7 +1,6 @@
 package me.limeice.netlite
 
 import io.reactivex.Observable
-import me.limeice.netlite.internal.WrapEmitter
 import me.limeice.netlite.internal.closeSilent
 import me.limeice.netlite.internal.moveFile
 import me.limeice.netlite.internal.read
@@ -15,7 +14,7 @@ import java.net.URL
 import javax.net.ssl.HttpsURLConnection
 
 @Suppress("MemberVisibilityCanBePrivate")
-open class RxNetLite() {
+open class RxNetLite {
 
     companion object {
         const val DEFAULT_TIMEOUT: Int = 30000
@@ -31,7 +30,8 @@ open class RxNetLite() {
         /* 第一个任务（任务集合中没有重复任务） */
         private const val TASK_FIRST: Byte = 1
 
-        @JvmStatic fun builder() = RxNetLite().Builder()
+        @JvmStatic
+        fun builder() = RxNetLite().Builder()
     }
 
     /* Get操作缓存处理类 */
@@ -154,7 +154,7 @@ open class RxNetLite() {
                         if (outFile.exists()) outFile.delete() // 存在则删除
                         if (!cacheFile.moveFile(outFile)) {
                             cacheFile.delete()
-                            throw RuntimeException("File download Error!,file path: ${outFile.absolutePath}")
+                            throw RuntimeException("File downloadProgress Error!,file path: ${outFile.absolutePath}")
                         }
                     }
                     size
@@ -162,7 +162,7 @@ open class RxNetLite() {
     }
 
     /**
-     *  下载数据
+     *  下载数据(带下载进度)
      *
      *  @param url       URL
      *  @param outFile  下载到指定位置
@@ -170,11 +170,11 @@ open class RxNetLite() {
      *
      *  @return RxJava 控制器（带有0~1f的下载进度）
      */
-    fun download(url: String, outFile: File, filter: DownloadFilter?): Observable<Float> =
-            download<HttpURLConnection>(url, outFile, filter, { /*None*/ })
+    fun downloadProgress(url: String, outFile: File, filter: DownloadFilter?): Observable<Float> =
+            downloadProgress<HttpURLConnection>(url, outFile, filter, { /*None*/ })
 
     /**
-     *  下载数据(当该网站下载数据长度为-1时可以调用本函数尝试)
+     *  下载数据(带下载进度)(当该网站下载数据长度为-1时可以调用本函数尝试)
      *
      *  @param url       URL
      *  @param outFile  下载到指定位置
@@ -182,8 +182,8 @@ open class RxNetLite() {
      *
      *  @return RxJava 控制器（带有0~1f的下载进度）
      */
-    fun downloadFixGetLength(url: String, outFile: File, filter: DownloadFilter?): Observable<Float> =
-            download<HttpURLConnection>(
+    fun downloadProgressFixGetLength(url: String, outFile: File, filter: DownloadFilter?): Observable<Float> =
+            downloadProgress<HttpURLConnection>(
                     url, outFile, filter,
                     { it.addRequestProperty("Accept-Encoding", "identity") }
             )
@@ -199,25 +199,20 @@ open class RxNetLite() {
      *  @return RxJava 控制器（带有0~1f的下载进度）
      */
     @Suppress("PLATFORM_CLASS_MAPPED_TO_KOTLIN")
-    fun <T : HttpURLConnection> download(url: String, outFile: File, filter: DownloadFilter?, config: (T) -> Unit): Observable<Float> {
+    fun <T : HttpURLConnection> downloadProgress(url: String, outFile: File, filter: DownloadFilter?, config: (T) -> Unit): Observable<Float> {
         return Observable.create { e ->
             var tag: Byte = TASK_NONE // 标记任务
 
             /* 过滤器，任务调剂 */
             if (filter != null) {
-                val emitter = filter.contains(url)
-                if (emitter == null) {
-                    tag = TASK_FIRST
-                    filter.add(WrapEmitter(url))
-                } else {
-                    when (filter.filter) {
-                        DownloadFilter.CANCEL -> return@create
-                        DownloadFilter.OVERLAY -> Unit
-                        DownloadFilter.WAIT_AFTER -> {
-                            emitter.lock()
-                            if (!emitter.error) e.onComplete()
-                            return@create
-                        }
+                val data = filter.checkout(url)
+                when (data.type) {
+                    DownloadFilter.WrapData.TASK_NONE -> return@create
+                    DownloadFilter.WrapData.TASK_FIRST -> tag = TASK_FIRST
+                    DownloadFilter.WrapData.TASK_WAIT_AFTER -> {
+                        data.emitter.lock()
+                        if (!data.emitter.error) e.onComplete()
+                        return@create
                     }
                 }
             }
@@ -259,7 +254,7 @@ open class RxNetLite() {
                             e.onComplete() // 下载成功
                         else {
                             cacheFile.delete()
-                            throw RuntimeException("File download Error!,file path: ${outFile.absolutePath}")
+                            throw RuntimeException("File downloadProgress Error!,file path: ${outFile.absolutePath}")
                         }
                     } else {
                         if (tag == TASK_FIRST) tag = TASK_NEED_CALL

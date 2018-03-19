@@ -24,4 +24,9 @@ public class WrapEmitter {
             lock.notifyAll();
         }
     }
+
+    @Override
+    public boolean equals(Object obj) {
+        return (obj instanceof WrapEmitter) && url.equals(((WrapEmitter) obj).url);
+    }
 }

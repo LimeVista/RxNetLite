@@ -23,17 +23,23 @@ class HelloTest {
         filter.filter = DownloadFilter.WAIT_AFTER
         var i = 0
         while (i++ < 18) {
-            lite.download("http://c.hiphotos.baidu.com/image/pic/item/962bd40735fae6cd09ccfb7903b30f2442a70fa9.jpg",
+            val ii = i
+            lite.downloadProgress("http://c.hiphotos.baidu.com/image/pic/item/962bd40735fae6cd09ccfb7903b30f2442a70fa9.jpg",
                     File("$folder${File.separator}133.png"), filter)
+                    .map {
+                        if (it >= 0.9999f)
+                            println("$ii->参与转换")
+                        it
+                    }
                     .subscribeOn(Schedulers.io())           // IO线程执行
                     .observeOn(Schedulers.computation())    // 计算线程完成显示
                     .subscribe(
-                            { println("下载${(it * 1000).toInt().toFloat() / 10}%") },
+                            { println("$ii->下载${(it * 1000).toInt().toFloat() / 10}%") },
                             {
                                 println("下载异常")
                                 it.printStackTrace()
                             },
-                            { println("下载完成队列：${Thread.currentThread().name}") }
+                            { println("$ii->下载完成队列：${Thread.currentThread().name}") }
                     )
         }
         Thread.sleep(10000)
