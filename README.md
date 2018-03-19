@@ -14,7 +14,7 @@ allprojects {
 
 * Step 2. Add the dependency
 ```groovy
- compile 'com.github.LimeVista:EasyCommon:0.1.2'
+ compile 'com.github.LimeVista:RxNetLite:0.3-beta1'
 ```
 
 * Or Maven
