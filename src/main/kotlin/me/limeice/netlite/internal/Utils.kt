@@ -72,5 +72,5 @@ fun read(inStream: InputStream, outStream: OutputStream): Long {
  * @return 是否移动成功{@code true}成功否则失败
  */
 fun File.moveFile(output: File?): Boolean {
-    return output != null && exists() && renameTo(output)
+    return output != null && renameTo(output)
 }

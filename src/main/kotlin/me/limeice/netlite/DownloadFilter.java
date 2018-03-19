@@ -4,6 +4,8 @@ import me.limeice.netlite.internal.WrapEmitter;
 
 import java.util.ArrayList;
 
+
+@SuppressWarnings("WeakerAccess")
 public class DownloadFilter {
 
     /* 覆盖上个重复任务文件,不参与调剂，不删除之前任务 */
@@ -30,10 +32,8 @@ public class DownloadFilter {
         short type;
     }
 
+    protected final Object mutex;
 
-    private final Object mutex;
-
-    @SuppressWarnings("WeakerAccess")
     protected ArrayList<WrapEmitter> tasks = new ArrayList<>();
 
     /* 过滤器 */

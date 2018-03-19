@@ -35,7 +35,7 @@ class DataCache() {
         useDownloadCaches = true
     }
 
-    /* 通过[name]生成临时缓存文件夹 */
+    /* 通过[name]生成临时缓存文件夹*/
     fun executeDownloadCacheFile(url: String): File {
         val tag = if (url.length < 10) url else url.substring(url.length - 8, url.length)
         return File(downloadCacheFolder!!, "${url.hashCode()}_$tag.tmp")
@@ -52,6 +52,6 @@ class DataCache() {
     /* 清除缓存 */
     @Synchronized fun clearCache() {
         downloadCacheFolder?.delete()
-        downloadCacheFolder?.createNewFile()
+        downloadCacheFolder?.mkdirs()
     }
 }

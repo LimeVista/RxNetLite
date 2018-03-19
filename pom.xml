@@ -6,7 +6,7 @@
 
     <groupId>me.limeice</groupId>
     <artifactId>RxNetLite</artifactId>
-    <version>0.2-beta2</version>
+    <version>0.3-beta1</version>
     <packaging>jar</packaging>
 
     <name>RxNetLite</name>

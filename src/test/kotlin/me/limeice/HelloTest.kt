@@ -1,6 +1,7 @@
 package me.limeice
 
 import io.reactivex.schedulers.Schedulers
+import me.limeice.netlite.DataCache
 import me.limeice.netlite.DownloadFilter
 import me.limeice.netlite.RxNetLite
 import org.junit.Test
@@ -11,9 +12,14 @@ import kotlin.test.assertEquals
 
 class HelloTest {
 
-    private val lite = RxNetLite.builder().create()
-
     private val folder = System.getProperty("java.io.tmpdir")
+
+    private val lite = RxNetLite.builder().setCaches(DataCache(File(folder, "TempLime")))
+            .create()
+
+    init {
+
+    }
 
     @Test
     fun download() {
@@ -26,11 +32,6 @@ class HelloTest {
             val ii = i
             lite.downloadProgress("http://c.hiphotos.baidu.com/image/pic/item/962bd40735fae6cd09ccfb7903b30f2442a70fa9.jpg",
                     File("$folder${File.separator}133.png"), filter)
-                    .map {
-                        if (it >= 0.9999f)
-                            println("$ii->参与转换")
-                        it
-                    }
                     .subscribeOn(Schedulers.io())           // IO线程执行
                     .observeOn(Schedulers.computation())    // 计算线程完成显示
                     .subscribe(
@@ -40,6 +41,34 @@ class HelloTest {
                                 it.printStackTrace()
                             },
                             { println("$ii->下载完成队列：${Thread.currentThread().name}") }
+                    )
+        }
+        Thread.sleep(10000)
+    }
+
+    @Test
+    fun download2() {
+        val filter = DownloadFilter()
+
+        /* 如果该任务已经存在，阻塞当前任务，当之前任务完成时和之前任务一样，执行后续操作 */
+        filter.filter = DownloadFilter.CANCEL
+        var i = 0
+        while (i++ < 18) {
+            val ii = i
+            lite.download("http://c.hiphotos.baidu.com/image/pic/item/962bd40735fae6cd09ccfb7903b30f2442a70fa9.jpg",
+                    File("$folder${File.separator}133.png"), filter)
+                    .subscribeOn(Schedulers.io())           // IO线程执行
+                    .observeOn(Schedulers.computation())    // 计算线程完成显示
+                    .map {
+                        println("队列$${ii}执行数据转换")
+                        ii
+                    }
+                    .subscribe(
+                            { println("$it->下载完成队列：${Thread.currentThread().name}") },
+                            {
+                                println("下载异常")
+                                it.printStackTrace()
+                            }
                     )
         }
         Thread.sleep(10000)

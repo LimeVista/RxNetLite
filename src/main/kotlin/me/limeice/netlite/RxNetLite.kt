@@ -1,6 +1,7 @@
 package me.limeice.netlite
 
 import io.reactivex.Observable
+import io.reactivex.ObservableEmitter
 import me.limeice.netlite.internal.closeSilent
 import me.limeice.netlite.internal.moveFile
 import me.limeice.netlite.internal.read
@@ -118,47 +119,92 @@ open class RxNetLite {
     fun download(url: String, out: OutputStream): Observable<Long> {
         return Observable.just(url)
                 .initGetConnection()
-                .startDownloadConnection(out)
+                .map { startDownloadConnection(it, out) }
     }
 
     /**
-     *  下载数据，功能有限版本
+     *  下载数据（可以结合RxJava流）（兼容Java语法）
+     *
+     *  @param url      URL
+     *  @param outFile 下载到指定位置
+     *  @param filter  下载过滤器
+     *
+     *  @return RxJava 控制器（带有文件）
+     */
+    fun download(url: String, outFile: File, filter: DownloadFilter) =
+            download<HttpURLConnection>(url, outFile, filter, {})
+
+    /**
+     *  下载数据（可以结合RxJava流）（兼容Java语法）
      *
      *  @param url      URL
      *  @param outFile 下载到指定位置
      *
-     *  @return RxJava 控制器（带有文件下载总长度）
+     *  @return RxJava 控制器（带有文件）
      */
-    fun download(url: String, outFile: File): Observable<Long> {
-        val cache = dataCache.useDownloadCaches
-        val out: FileOutputStream
-        val cacheFile: File
-        try {
-            /* 设置缓存 */
-            cacheFile = if (cache) {
-                val f = dataCache.executeDownloadCacheFile(url)
-                dataCache.createCacheFile(f)
-                f
-            } else outFile
+    fun download(url: String, outFile: File) = download<HttpURLConnection>(url, outFile, null, {})
 
-            if (!cache && !outFile.exists()) outFile.createNewFile() // 如果文件不存在则创建
-            out = FileOutputStream(cacheFile)
-        } catch (e: Exception) {
-            return Observable.fromCallable { throw e }
-        }
-        return Observable.just(url)
-                .initGetConnection()
-                .startDownloadConnection(out)
-                .map { size ->
-                    if (cache) {
-                        if (outFile.exists()) outFile.delete() // 存在则删除
-                        if (!cacheFile.moveFile(outFile)) {
-                            cacheFile.delete()
-                            throw RuntimeException("File downloadProgress Error!,file path: ${outFile.absolutePath}")
+
+    /**
+     *  下载数据（可以结合RxJava流）（兼容Java语法）
+     *
+     *  @param url      URL
+     *  @param outFile 下载到指定位置
+     *  @param filter  下载过滤器
+     *  @param config  预置配置
+     *
+     *  @return RxJava 控制器（带有文件）
+     */
+    fun <T : HttpURLConnection> download(url: String, outFile: File, filter: DownloadFilter?, config: (T) -> Unit): Observable<File> {
+        val cache = dataCache.useDownloadCaches
+        return Observable.create {
+            var tag: Byte = TASK_NONE // 标记任务
+            var out: FileOutputStream? = null
+            val cacheFile = if (cache) dataCache.executeDownloadCacheFile(url) else outFile
+            try {
+                /* 过滤器，任务调剂 */
+                if (filter != null) {
+                    val data = filter.checkout(url)
+                    when (data.type) {
+                        DownloadFilter.WrapData.TASK_NONE -> return@create
+                        DownloadFilter.WrapData.TASK_FIRST -> tag = TASK_FIRST
+                        DownloadFilter.WrapData.TASK_WAIT_AFTER -> {
+                            data.emitter.lock()
+                            if (!data.emitter.error) it.onNext(outFile)
+                            return@create
                         }
                     }
-                    size
                 }
+                @Suppress("UNCHECKED_CAST")
+                val connect = URL(url).openConnection() as T
+                initGetConnection(connect)
+                config(connect)
+                cacheFile.checkFileExist(cache) // 检查文件状态
+                out = FileOutputStream(cacheFile) // 开始流
+
+                if (startDownloadConnection(connect, out, it) == Long.MIN_VALUE) return@create   // 下载错误则结束，抛异常
+
+                if (cache) { // 使用缓存
+                    if (outFile.exists()) outFile.delete() // 当前存在则删除（覆盖）
+                    out.closeSilent()  // 防止文件移动失败
+                    if (!cacheFile.moveFile(outFile)) {
+                        cacheFile.delete()
+                        it.onError(RuntimeException("File downloadProgress Error!,file path: ${outFile.absolutePath}"))
+                        return@create
+                    }
+                }
+                if (tag == TASK_FIRST) tag = TASK_NEED_CALL
+                it.onNext(outFile) // 下载成功
+            } finally {
+                out.closeSilent()
+                if (cache) cacheFile.delete() // 下载失败删除缓存
+                if (tag == TASK_NEED_CALL)
+                    filter?.clearSuccess(url) // 完成任务
+                else if (tag == TASK_FIRST) {
+                    filter?.clearBreak(url) // 中断任务
+                }
+            }
+        }
     }
 
     /**
@@ -202,7 +248,6 @@ open class RxNetLite {
     fun <T : HttpURLConnection> downloadProgress(url: String, outFile: File, filter: DownloadFilter?, config: (T) -> Unit): Observable<Float> {
         return Observable.create { e ->
             var tag: Byte = TASK_NONE // 标记任务
-
             /* 过滤器，任务调剂 */
             if (filter != null) {
                 val data = filter.checkout(url)
@@ -229,13 +274,8 @@ open class RxNetLite {
                 val contentLength = connect.contentLengthLong
                 val code = connect.responseCode
                 if (code == 200) {
-                    /* 创建缓存文件设置文件 */
-                    if (cache) {
-                        dataCache.createCacheFile(cacheFile)
-                    } else if (!outFile.exists()) {
-                        outFile.createNewFile()
-                    }
-                    input = connect.inputStream
+                    cacheFile.checkFileExist(cache) // 创建缓存文件或检查文件是否存在
+                    input = connect.inputStream     // 开始下载
                     out = FileOutputStream(cacheFile)
                     val buffer = ByteArray(CACHE_SIZE)
                     var count = 0L
@@ -250,16 +290,15 @@ open class RxNetLite {
                     out.flush()
                     if (cache) { // 使用缓存
                         if (outFile.exists()) outFile.delete() // 当前存在则删除（覆盖）
-                        if (cacheFile.moveFile(outFile))
-                            e.onComplete() // 下载成功
-                        else {
+                        out.closeSilent()  // 防止文件移动失败
+                        if (!cacheFile.moveFile(outFile)) {
                             cacheFile.delete()
-                            throw RuntimeException("File downloadProgress Error!,file path: ${outFile.absolutePath}")
+                            e.onError(RuntimeException("File downloadProgress Error!,File path: ${outFile.absolutePath},Cache File path:${cacheFile.absolutePath}"))
+                            return@create
                         }
-                    } else {
-                        if (tag == TASK_FIRST) tag = TASK_NEED_CALL
-                        e.onComplete() // 下载成功
                     }
+                    if (tag == TASK_FIRST) tag = TASK_NEED_CALL
+                    e.onComplete() // 下载成功
                 } else {
                     e.onError(RuntimeException("Network Connection Error!Error code: $code"))
                 }
@@ -324,20 +363,35 @@ open class RxNetLite {
     }
 
     /* 连接到 [t] 获取数据,返回get操作数据 */
-    private fun <T : HttpURLConnection> Observable<T>.startDownloadConnection(out: OutputStream): Observable<Long> {
-        return map {
-            val code = it.responseCode
-            if (code == 200) {
-                var input: InputStream? = null
-                try {
-                    input = it.inputStream
-                    return@map read(input, out)
-                } finally {
-                    input.closeSilent()
-                    it.disconnect()
-                }
+    private fun <T : HttpURLConnection> startDownloadConnection(
+            connect: T,                                 // Http通讯
+            out: OutputStream,                          // 输出流
+            emitter: ObservableEmitter<File>? = null    // 发射器
+    ): Long {
+        val code = connect.responseCode
+        if (code == 200) {
+            var input: InputStream? = null
+            try {
+                input = connect.inputStream
+                return read(input, out)
+            } finally {
+                input.closeSilent()
+                connect.disconnect()
             }
+        }
+        if (emitter != null)
+            emitter.onError(RuntimeException("Network Connection Error!Error code: $code"))
+        else
             throw RuntimeException("Network Connection Error!Error code: $code")
+        return Long.MIN_VALUE
+    }
+
+    /* 检查文件下载是否使用缓存，如果使用缓存检查新建缓存文件，否则检查文件是否存在 */
+    private fun File.checkFileExist(isUseCaches: Boolean) {
+        if (isUseCaches) {
+            dataCache.createCacheFile(this)
+        } else if (!this.exists()) {
+            this.createNewFile()
         }
     }
 
